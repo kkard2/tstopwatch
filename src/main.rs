@@ -164,8 +164,7 @@ fn draw_stopwatch(
     let hours = elapsed.as_millis() / 1000 / 60 / 60;
     let elapsed_str = format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, millis);
 
-    stdout.queue(Print(elapsed_str))?;
-    stdout.flush()?;
+    stdout.execute(Print(elapsed_str))?;
 
     Ok(())
 }
