@@ -14,7 +14,7 @@ use crossterm::{
     ExecutableCommand, QueueableCommand, Result,
 };
 
-use stopwatch::Stopwatch;
+use stopwatch::{Stopwatch, StopwatchSerializable};
 
 #[derive(Default, Serialize, Deserialize, Clone, Copy)]
 enum AlignMode {
@@ -49,11 +49,14 @@ struct DrawContext {
 
 mod stopwatch;
 
+const APP_NAME: &str = "tstopwatch";
+const STATE_FILE: &str = "stopwatch_save";
+
 fn main() -> Result<()> {
-    let config: Config = match confy::load("tstopwatch", None) {
+    let config: Config = match confy::load(APP_NAME, None) {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("Error loading config: {}", e);
+            eprintln!("error loading config: {}", e);
             Config::default()
         }
     };
@@ -80,7 +83,8 @@ fn main() -> Result<()> {
         }
     };
 
-    let mut cur_stopwatch = Stopwatch::new();
+    let mut cur_stopwatch: Stopwatch =
+        (&confy::load(APP_NAME, STATE_FILE).unwrap_or(StopwatchSerializable::default())).into();
 
     loop {
         if crossterm::event::poll(update_rate)? {
@@ -90,12 +94,30 @@ fn main() -> Result<()> {
                     KeyCode::Char(' ') => {
                         if cur_stopwatch.is_running() {
                             cur_stopwatch.stop();
+                            confy::store(
+                                APP_NAME,
+                                STATE_FILE,
+                                StopwatchSerializable::from(&cur_stopwatch),
+                            )
+                            .expect("epic file save fail");
                         } else {
                             cur_stopwatch.start();
+                            confy::store(
+                                APP_NAME,
+                                STATE_FILE,
+                                StopwatchSerializable::from(&cur_stopwatch),
+                            )
+                            .expect("epic file save fail");
                         }
                     }
                     KeyCode::Char('r') => {
                         cur_stopwatch.reset();
+                        confy::store(
+                            APP_NAME,
+                            STATE_FILE,
+                            StopwatchSerializable::from(&cur_stopwatch),
+                        )
+                        .expect("epic file save fail");
                     }
                     _ => {}
                 },
@@ -105,6 +127,12 @@ fn main() -> Result<()> {
 
         draw_stopwatch(&mut stdout, &cur_stopwatch, &draw_context)?;
     }
+    confy::store(
+        APP_NAME,
+        STATE_FILE,
+        StopwatchSerializable::from(&cur_stopwatch),
+    )
+    .expect("epic file save fail");
 
     match config.align {
         AlignMode::NoClear => {}
