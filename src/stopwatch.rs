@@ -85,3 +85,9 @@ impl From<&StopwatchSerializable> for Stopwatch {
         }
     }
 }
+
+impl From<StopwatchSerializable> for Stopwatch {
+    fn from(stopwatch: StopwatchSerializable) -> Self {
+        Self::from(&stopwatch)
+    }
+}

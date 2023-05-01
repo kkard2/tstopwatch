@@ -3,6 +3,7 @@ extern crate serde_derive;
 
 use std::{
     io::{stdout, Write},
+    path::PathBuf,
     time::Duration,
 };
 
@@ -29,6 +30,7 @@ struct Config {
     color: Color,
     update_rate_millis: u64,
     align: AlignMode,
+    state_file: PathBuf,
 }
 
 impl Default for Config {
@@ -37,6 +39,7 @@ impl Default for Config {
             color: Color::White,
             update_rate_millis: 50,
             align: AlignMode::NoClear,
+            state_file: PathBuf::from("stopwatch.json"),
         }
     }
 }
@@ -50,7 +53,6 @@ struct DrawContext {
 mod stopwatch;
 
 const APP_NAME: &str = "tstopwatch";
-const STATE_FILE: &str = "stopwatch_save";
 
 fn main() -> Result<()> {
     let config: Config = match confy::load(APP_NAME, None) {
@@ -83,8 +85,7 @@ fn main() -> Result<()> {
         }
     };
 
-    let mut cur_stopwatch: Stopwatch =
-        (&confy::load(APP_NAME, STATE_FILE).unwrap_or(StopwatchSerializable::default())).into();
+    let mut cur_stopwatch: Stopwatch = load_state(&config.state_file);
 
     loop {
         if crossterm::event::poll(update_rate)? {
@@ -94,30 +95,18 @@ fn main() -> Result<()> {
                     KeyCode::Char(' ') => {
                         if cur_stopwatch.is_running() {
                             cur_stopwatch.stop();
-                            confy::store(
-                                APP_NAME,
-                                STATE_FILE,
-                                StopwatchSerializable::from(&cur_stopwatch),
-                            )
-                            .expect("epic file save fail");
+                            store_state(&config.state_file, &cur_stopwatch)
+                                .expect("epic file save fail");
                         } else {
                             cur_stopwatch.start();
-                            confy::store(
-                                APP_NAME,
-                                STATE_FILE,
-                                StopwatchSerializable::from(&cur_stopwatch),
-                            )
-                            .expect("epic file save fail");
+                            store_state(&config.state_file, &cur_stopwatch)
+                                .expect("epic file save fail");
                         }
                     }
                     KeyCode::Char('r') => {
                         cur_stopwatch.reset();
-                        confy::store(
-                            APP_NAME,
-                            STATE_FILE,
-                            StopwatchSerializable::from(&cur_stopwatch),
-                        )
-                        .expect("epic file save fail");
+                        store_state(&config.state_file, &cur_stopwatch)
+                            .expect("epic file save fail");
                     }
                     _ => {}
                 },
@@ -127,12 +116,8 @@ fn main() -> Result<()> {
 
         draw_stopwatch(&mut stdout, &cur_stopwatch, &draw_context)?;
     }
-    confy::store(
-        APP_NAME,
-        STATE_FILE,
-        StopwatchSerializable::from(&cur_stopwatch),
-    )
-    .expect("epic file save fail");
+
+    store_state(&config.state_file, &cur_stopwatch).expect("epic file save fail");
 
     match config.align {
         AlignMode::NoClear => {}
@@ -166,5 +151,22 @@ fn draw_stopwatch(
 
     stdout.execute(Print(elapsed_str))?;
 
+    Ok(())
+}
+
+fn load_state(path: &PathBuf) -> Stopwatch {
+    match std::fs::read_to_string(path) {
+        Ok(content) => match serde_json::from_str::<StopwatchSerializable>(&content) {
+            Ok(state) => state.into(),
+            Err(_) => StopwatchSerializable::default().into(),
+        },
+        Err(_) => StopwatchSerializable::default().into(),
+    }
+}
+
+fn store_state(path: &PathBuf, state: &Stopwatch) -> Result<()> {
+    let serialized = StopwatchSerializable::from(state);
+    let serialized_str = serde_json::to_string(&serialized)?;
+    std::fs::write(path, serialized_str)?;
     Ok(())
 }
