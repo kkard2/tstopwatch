@@ -1,27 +1,19 @@
-use std::time::{Duration, Instant};
+use serde::{ser::SerializeStruct, Deserialize, de::Visitor};
+
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
 
 use chrono::Utc;
+use serde::Serialize;
 
+const MAX_UNDO_STACK_SIZE: usize = 100;
+
+#[derive(Default, Clone)]
 pub struct Stopwatch {
     duration: Duration,
     cur_start: Option<Instant>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct StopwatchSerializable {
-    duration_secs: u64,
-    duration_nanos: u32,
-    cur_start_millis_utc: Option<i64>,
-}
-
-impl Default for StopwatchSerializable {
-    fn default() -> Self {
-        Self {
-            duration_secs: 0,
-            duration_nanos: 0,
-            cur_start_millis_utc: None,
-        }
-    }
 }
 
 impl Stopwatch {
@@ -54,18 +46,40 @@ impl Stopwatch {
     }
 }
 
-impl From<&Stopwatch> for StopwatchSerializable {
-    fn from(stopwatch: &Stopwatch) -> Self {
-        let duration = stopwatch.elapsed();
-        StopwatchSerializable {
-            duration_secs: duration.as_secs(),
-            duration_nanos: duration.subsec_nanos(),
-            cur_start_millis_utc: if stopwatch.is_running() {
-                Some(Utc::now().timestamp_millis())
+impl Serialize for Stopwatch {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        let mut state = serializer.serialize_struct("Stopwatch", 3)?;
+        state.serialize_field("duration_secs", &self.duration.as_secs())?;
+        state.serialize_field("duration_nanos", &self.duration.subsec_nanos())?;
+        state.serialize_field("cur_start_millis_utc", if let Some(cur_start) = &self.cur_start {
+                &Some(cur_start.elapsed().as_millis())
             } else {
-                None
-            },
-        }
+                &None
+            })?;
+        state.end()
+    }
+}
+
+struct StopwatchVisitor;
+
+impl<'de> Visitor<'de> for StopwatchVisitor {
+    type Value = Stopwatch;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl<'de> Deserialize<'de> for Stopwatch {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        const FIELDS: &[&str] = &["duration_secs", "duration_nanos", "cur_start_millis_utc"];
+        deserializer.deserialize_struct("Stopwatch", FIELDS, StopwatchVisitor)
     }
 }
 
@@ -90,4 +104,97 @@ impl From<StopwatchSerializable> for Stopwatch {
     fn from(stopwatch: StopwatchSerializable) -> Self {
         Self::from(&stopwatch)
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct StopwatchSerializable {
+    duration_secs: u64,
+    duration_nanos: u32,
+    cur_start_millis_utc: Option<i64>,
+}
+
+impl Default for StopwatchSerializable {
+    fn default() -> Self {
+        Self {
+            duration_secs: 0,
+            duration_nanos: 0,
+            cur_start_millis_utc: None,
+        }
+    }
+}
+
+impl From<&Stopwatch> for StopwatchSerializable {
+    fn from(stopwatch: &Stopwatch) -> Self {
+        let duration = stopwatch.elapsed();
+        StopwatchSerializable {
+            duration_secs: duration.as_secs(),
+            duration_nanos: duration.subsec_nanos(),
+            cur_start_millis_utc: if stopwatch.is_running() {
+                Some(Utc::now().timestamp_millis())
+            } else {
+                None
+            },
+        }
+    }
+}
+
+pub struct StopwatchStack {
+    undo_stack: VecDeque<Stopwatch>,
+    redo_stack: VecDeque<Stopwatch>,
+    current: Stopwatch,
+}
+
+impl StopwatchStack {
+    pub fn new() -> Self {
+        Self {
+            undo_stack: Default::default(),
+            redo_stack: Default::default(),
+            current: Default::default(),
+        }
+    }
+
+    pub fn current(&self) -> &Stopwatch {
+        &self.current
+    }
+
+    pub fn current_mut(&mut self) -> &mut Stopwatch {
+        &mut self.current
+    }
+
+    pub fn push(&mut self) {
+        self.undo_stack.push_back(self.current.clone());
+
+        while self.undo_stack.len() > MAX_UNDO_STACK_SIZE {
+            self.undo_stack.pop_front();
+        }
+
+        self.redo_stack.clear();
+    }
+
+    pub fn undo(&mut self) -> bool {
+        if let Some(stopwatch) = self.undo_stack.pop_back() {
+            self.redo_stack.push_back(self.current.clone());
+            self.current = stopwatch;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn redo(&mut self) -> bool {
+        if let Some(stopwatch) = self.redo_stack.pop_back() {
+            self.undo_stack.push_back(self.current.clone());
+            self.current = stopwatch;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct StopwatchStackSerializable {
+    undo_stack: Vec<StopwatchSerializable>,
+    redo_stack: Vec<StopwatchSerializable>,
+    current: StopwatchSerializable,
 }

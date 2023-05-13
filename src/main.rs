@@ -17,39 +17,24 @@ use crossterm::{
 
 use stopwatch::{Stopwatch, StopwatchSerializable};
 
-#[derive(Default, Serialize, Deserialize, Clone, Copy)]
-enum AlignMode {
-    NoClear,
-    #[default]
-    TopLeft,
-    BottomLeft,
-}
+pub struct AppState {}
 
 #[derive(Serialize, Deserialize)]
 struct Config {
-    color: Color,
     update_rate_millis: u64,
-    align: AlignMode,
     state_file: PathBuf,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
-            color: Color::White,
             update_rate_millis: 50,
-            align: AlignMode::NoClear,
             state_file: PathBuf::from("stopwatch.json"),
         }
     }
 }
 
-struct DrawContext {
-    start_pos: (u16, u16),
-    size: (u16, u16),
-    align: AlignMode,
-}
-
+mod draw;
 mod stopwatch;
 
 const APP_NAME: &str = "tstopwatch";
@@ -67,25 +52,12 @@ fn main() -> Result<()> {
     let mut stdout = stdout();
     crossterm::terminal::enable_raw_mode()?;
 
-    let draw_context = DrawContext {
-        start_pos: crossterm::cursor::position()?,
-        size: crossterm::terminal::size()?,
-        align: config.align,
-    };
-
     stdout
         .queue(cursor::Hide)?
-        .queue(SetColors(Colored::ForegroundColor(config.color).into()))?
+        .queue(EnterAlternateScreen)?
         .flush()?;
 
-    match config.align {
-        AlignMode::NoClear => {}
-        _ => {
-            stdout.execute(EnterAlternateScreen)?;
-        }
-    };
-
-    let mut cur_stopwatch: Stopwatch = load_state(&config.state_file);
+    let mut app_state = load_state(&config.state_file);
 
     loop {
         if crossterm::event::poll(update_rate)? {
@@ -114,53 +86,27 @@ fn main() -> Result<()> {
             }
         }
 
-        draw_stopwatch(&mut stdout, &cur_stopwatch, &draw_context)?;
+        draw::draw(&mut stdout, &cur_stopwatch)?;
     }
 
     store_state(&config.state_file, &cur_stopwatch).expect("epic file save fail");
 
-    match config.align {
-        AlignMode::NoClear => {}
-        _ => {
-            stdout.execute(LeaveAlternateScreen)?;
-        }
-    };
+    stdout
+        .queue(LeaveAlternateScreen)?
+        .queue(cursor::Show)?
+        .flush()?;
 
-    stdout.queue(cursor::Show)?.flush()?;
     crossterm::terminal::disable_raw_mode()?;
     Ok(())
 }
 
-fn draw_stopwatch(
-    stdout: &mut std::io::Stdout,
-    cur_stopwatch: &Stopwatch,
-    draw_context: &DrawContext,
-) -> Result<()> {
-    stdout.queue(match draw_context.align {
-        AlignMode::NoClear => cursor::MoveTo(draw_context.start_pos.0, draw_context.start_pos.1),
-        AlignMode::TopLeft => cursor::MoveTo(0, 0),
-        AlignMode::BottomLeft => cursor::MoveTo(0, draw_context.size.1),
-    })?;
-
-    let elapsed = cur_stopwatch.elapsed();
-    let millis = elapsed.as_millis() % 1000;
-    let seconds = elapsed.as_millis() / 1000 % 60;
-    let minutes = elapsed.as_millis() / 1000 / 60 % 60;
-    let hours = elapsed.as_millis() / 1000 / 60 / 60;
-    let elapsed_str = format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, millis);
-
-    stdout.execute(Print(elapsed_str))?;
-
-    Ok(())
-}
-
-fn load_state(path: &PathBuf) -> Stopwatch {
+fn load_state(path: &PathBuf) -> AppStateSerializable {
     match std::fs::read_to_string(path) {
-        Ok(content) => match serde_json::from_str::<StopwatchSerializable>(&content) {
+        Ok(content) => match serde_json::from_str::<AppStateSerializable>(&content) {
             Ok(state) => state.into(),
-            Err(_) => StopwatchSerializable::default().into(),
+            Err(_) => AppStateSerializable::default(),
         },
-        Err(_) => StopwatchSerializable::default().into(),
+        Err(_) => AppStateSerializable::default(),
     }
 }
 
