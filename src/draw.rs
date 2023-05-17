@@ -1,37 +1,47 @@
+use std::io::Write;
+
 use crate::{stopwatch::Stopwatch, AppState};
 
 use crossterm::{
-    cursor::{self, MoveTo},
+    cursor::{Hide, MoveTo},
     style::{Color, Colors, Print, SetColors},
     terminal::{Clear, ClearType},
-    ExecutableCommand, QueueableCommand,
+    QueueableCommand,
+};
+
+const NORMAL_COLORS: Colors = Colors {
+    foreground: Some(Color::White),
+    background: Some(Color::Black),
+};
+const HIGHLIGHT_COLORS: Colors = Colors {
+    foreground: Some(Color::Yellow),
+    background: Some(Color::Black),
 };
 
 pub fn draw(stdout: &mut std::io::Stdout, state: &AppState) -> crossterm::Result<()> {
     stdout
         .queue(Clear(ClearType::All))?
-        .queue(SetColors(Colors::new(Color::White, Color::Black)))?
+        .queue(Hide)?
         .queue(MoveTo(0, 0))?;
 
     for (i, stack) in state.stacks().iter().enumerate() {
-        stdout.queue(SetColors(if state.current_stack() == i {
-            Colors::new(Color::Black, Color::White)
+        stdout.queue(SetColors(if state.current_stack_index() == i {
+            HIGHLIGHT_COLORS
         } else {
-            Colors::new(Color::White, Color::Black)
+            NORMAL_COLORS
         }))?;
-        draw_stopwatch(stdout, stack.current())?;
         stdout.queue(MoveTo(0, i as u16))?;
+        draw_stopwatch(stdout, stack.current())?;
     }
 
-    Ok(())
+    stdout.queue(SetColors(NORMAL_COLORS))?;
+    stdout.flush()
 }
 
 fn draw_stopwatch(
     stdout: &mut std::io::Stdout,
     cur_stopwatch: &Stopwatch,
 ) -> crossterm::Result<()> {
-    stdout.queue(MoveTo(0, 0))?;
-
     let elapsed = cur_stopwatch.elapsed();
     let millis = elapsed.as_millis() % 1000;
     let seconds = elapsed.as_millis() / 1000 % 60;
