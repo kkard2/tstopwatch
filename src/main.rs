@@ -10,14 +10,32 @@ use std::{
 use crossterm::{
     self, cursor,
     event::{Event, KeyCode, KeyEventKind},
-    style::{Color, Colored, Print, SetColors},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand, QueueableCommand, Result,
+    QueueableCommand, Result,
 };
 
-use stopwatch::{Stopwatch, StopwatchSerializable};
+use stopwatch::{Stopwatch, StopwatchStack};
 
-pub struct AppState {}
+#[derive(Serialize, Deserialize)]
+pub struct AppState {
+    stacks: Vec<StopwatchStack>,
+    current_stack: usize,
+    config: Config,
+}
+
+impl AppState {
+    pub fn stacks(&self) -> &[StopwatchStack] {
+        self.stacks.as_ref()
+    }
+
+    pub fn current_stack(&self) -> usize {
+        self.current_stack
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 struct Config {
@@ -42,10 +60,7 @@ const APP_NAME: &str = "tstopwatch";
 fn main() -> Result<()> {
     let config: Config = match confy::load(APP_NAME, None) {
         Ok(config) => config,
-        Err(e) => {
-            eprintln!("error loading config: {}", e);
-            Config::default()
-        }
+        Err(e) => Config::default(),
     };
 
     let update_rate = Duration::from_millis(config.update_rate_millis);

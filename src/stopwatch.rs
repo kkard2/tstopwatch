@@ -1,4 +1,4 @@
-use serde::{ser::SerializeStruct, Deserialize, de::Visitor};
+use serde::{de::Visitor, Deserialize};
 
 use std::{
     collections::VecDeque,
@@ -49,37 +49,33 @@ impl Stopwatch {
 impl Serialize for Stopwatch {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer
+        S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("Stopwatch", 3)?;
-        state.serialize_field("duration_secs", &self.duration.as_secs())?;
-        state.serialize_field("duration_nanos", &self.duration.subsec_nanos())?;
-        state.serialize_field("cur_start_millis_utc", if let Some(cur_start) = &self.cur_start {
-                &Some(cur_start.elapsed().as_millis())
-            } else {
-                &None
-            })?;
-        state.end()
-    }
-}
-
-struct StopwatchVisitor;
-
-impl<'de> Visitor<'de> for StopwatchVisitor {
-    type Value = Stopwatch;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        todo!()
+        let serializable: StopwatchSerializable = self.into();
+        serializable.serialize(serializer)
+        //let mut state = serializer.serialize_struct("Stopwatch", 3)?;
+        //state.serialize_field("duration_secs", &self.duration.as_secs())?;
+        //state.serialize_field("duration_nanos", &self.duration.subsec_nanos())?;
+        //state.serialize_field(
+        //    "cur_start_millis_utc",
+        //    if let Some(cur_start) = &self.cur_start {
+        //        &Some(cur_start.elapsed().as_millis())
+        //    } else {
+        //        &None
+        //    },
+        //)?;
+        //state.end()
     }
 }
 
 impl<'de> Deserialize<'de> for Stopwatch {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>
+        D: serde::Deserializer<'de>,
     {
-        const FIELDS: &[&str] = &["duration_secs", "duration_nanos", "cur_start_millis_utc"];
-        deserializer.deserialize_struct("Stopwatch", FIELDS, StopwatchVisitor)
+        StopwatchSerializable::deserialize(deserializer).map(|s| s.into())
+        //const FIELDS: &[&str] = &["duration_secs", "duration_nanos", "cur_start_millis_utc"];
+        //deserializer.deserialize_struct("Stopwatch", FIELDS, StopwatchVisitor)
     }
 }
 
@@ -107,7 +103,7 @@ impl From<StopwatchSerializable> for Stopwatch {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct StopwatchSerializable {
+struct StopwatchSerializable {
     duration_secs: u64,
     duration_nanos: u32,
     cur_start_millis_utc: Option<i64>,
@@ -138,6 +134,7 @@ impl From<&Stopwatch> for StopwatchSerializable {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct StopwatchStack {
     undo_stack: VecDeque<Stopwatch>,
     redo_stack: VecDeque<Stopwatch>,
@@ -190,11 +187,4 @@ impl StopwatchStack {
             false
         }
     }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct StopwatchStackSerializable {
-    undo_stack: Vec<StopwatchSerializable>,
-    redo_stack: Vec<StopwatchSerializable>,
-    current: StopwatchSerializable,
 }
