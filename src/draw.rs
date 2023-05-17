@@ -5,7 +5,6 @@ use crate::{stopwatch::Stopwatch, AppState};
 use crossterm::{
     cursor::{Hide, MoveTo},
     style::{Color, Colors, Print, SetColors},
-    terminal::{Clear, ClearType},
     QueueableCommand,
 };
 
@@ -24,10 +23,7 @@ const TIMESTAMP_COLORS: Colors = Colors {
 
 pub fn draw(stdout: &mut std::io::Stdout, state: &AppState) -> crossterm::Result<()> {
     let size = crossterm::terminal::size()?;
-    stdout
-        .queue(Clear(ClearType::All))?
-        .queue(Hide)?
-        .queue(MoveTo(0, 0))?;
+    stdout.queue(Hide)?.queue(MoveTo(0, 0))?;
 
     for (i, stack) in state.stacks().iter().enumerate() {
         if i > (size.1 - 2) as usize {

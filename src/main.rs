@@ -10,8 +10,8 @@ use std::{
 use crossterm::{
     self, cursor,
     event::{Event, KeyCode, KeyEventKind, KeyModifiers},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
-    QueueableCommand, Result,
+    terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand, QueueableCommand, Result,
 };
 
 use stopwatch::StopwatchStack;
@@ -136,6 +136,7 @@ fn main() -> Result<()> {
                         if let Some(deleted) = deleted {
                             app_state.stacks.push(deleted);
                             changed = true;
+                            stdout.execute(Clear(ClearType::All))?;
                         }
                     }
                     // new stack
@@ -145,12 +146,14 @@ fn main() -> Result<()> {
                             .insert(app_state.current_stack_index() + 1, Default::default());
                         app_state.current_stack_index += 1;
                         changed = true;
+                        stdout.execute(Clear(ClearType::All))?;
                     }
                     KeyCode::Char('O') if key.modifiers == KeyModifiers::SHIFT => {
                         app_state
                             .stacks
                             .insert(app_state.current_stack_index(), Default::default());
                         changed = true;
+                        stdout.execute(Clear(ClearType::All))?;
                     }
                     // moving
                     KeyCode::Char('j') if key.modifiers.is_empty() => {
@@ -169,9 +172,12 @@ fn main() -> Result<()> {
                         // TODO: don't make a memory leak
                         if app_state.stacks.len() > 1 {
                             let removed = app_state.stacks.remove(app_state.current_stack_index());
-                            app_state.current_stack_index = app_state.current_stack_index.min(app_state.stacks.len() - 1);
+                            app_state.current_stack_index = app_state
+                                .current_stack_index
+                                .min(app_state.stacks.len() - 1);
                             app_state.deleted_stacks.push(removed);
                             changed = true;
+                            stdout.execute(Clear(ClearType::All))?;
                         }
                     }
                     _ => {}
